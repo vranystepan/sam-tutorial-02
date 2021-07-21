@@ -1,0 +1,88 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  sam-tutorial-02
+  Sample SAM Template for sam-tutorial-02
+Globals:
+  Function:
+    Timeout: 5
+
+Resources:
+  AuthorizerInvokeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - apigateway.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !Sub
+                    - "${Arn}*"
+                    - Arn: !GetAtt AuthorizerFunction.Arn
+  HTTPApiGateway:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      Auth:
+        Authorizers:
+          LambdaAuthorizer:
+            AuthorizerPayloadFormatVersion: 2.0
+            FunctionArn: !GetAtt AuthorizerFunction.Arn
+            FunctionInvokeRole: !GetAtt AuthorizerInvokeRole.Arn
+            Identity:
+              Headers:
+                - Authorization
+  AuthorizerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: authorizer/
+      Handler: authorizer
+      Runtime: go1.x
+      Tracing: Active
+  IssuerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: issuer/
+      Handler: issuer
+      Runtime: go1.x
+      Tracing: Active
+      Events:
+        HttpApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: /tokens
+            Method: POST
+            ApiId: !Ref HTTPApiGateway
+  ListEventsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: events_list/
+      Handler: events_list
+      Runtime: go1.x
+      Tracing: Active
+      Events:
+        HttpApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: /events
+            Method: GET
+            ApiId: !Ref HTTPApiGateway
+            Auth:
+              Authorizer: LambdaAuthorizer
+
+Outputs:
+  IssuerFunctionARN:
+    Value: !GetAtt IssuerFunction.Arn
